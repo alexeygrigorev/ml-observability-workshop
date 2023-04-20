@@ -28,7 +28,12 @@ Creating an end-to-end observability platform
 
 * Install Python 3.9 (e.g. with [Anaconda](https://www.anaconda.com/download#downloads) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html))
 * Install pipenv (`pip install -U pipenv`)
-* Install the dependencies from the "Use Case" section (scroll a bit down)
+* Install the dependencies:
+
+```bash
+(cd train && pipenv install)
+(cd serve && pipenv install)
+```
 
 ## MLOps
 
@@ -38,11 +43,8 @@ Introduction to MLOps and how it helps with the entire ML project lifecycle
 
 Discuss the ride duration prediction use case, discuss the overall architecture, show the notebook with the solution, show the script with training it (do not implement it live - to save time, and refer to Lightweight MLOps Zoomcamp for details)
 
-Install depencencies 
-
 ```bash
 cd train
-pipenv install
 ```
 
 Start jupyter
@@ -65,13 +67,8 @@ Next, execute the code to get the model
 
 Implement a simple Flask application for serving the model
 
-
-Install depencencies 
-
 ```bash
 cd serve
- 
-pipenv install
 ```
 
 Run the `serve_starter.py` file:
