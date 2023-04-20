@@ -23,41 +23,47 @@ Creating an end-to-end observability platform
 * Basic knowledge of ML (see [this course](http://mlzoomcamp.com) for a refresher)
 * AWS account ([instructions how to create an account](https://mlbookcamp.com/article/aws))
 
+
 ## Preparation
 
-
+* Install Python 3.9 (e.g. with [Anaconda](https://www.anaconda.com/download#downloads) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html))
+* Install pipenv (`pip install -U pipenv`)
+* Install the dependencies from the "Use Case" section (scroll a bit down)
 
 ## MLOps
 
-* Introduction to MLOps and how it helps with the entire ML project lifecycle
+Introduction to MLOps and how it helps with the entire ML project lifecycle
 
 ## Use case
 
-* Discuss the ride duration prediction use case, discuss the overall architecture, show the notebook with the solution, show the script with training it (do not implement it live - to save time, and refer to Lightweight MLOps Zoomcamp for details)
+Discuss the ride duration prediction use case, discuss the overall architecture, show the notebook with the solution, show the script with training it (do not implement it live - to save time, and refer to Lightweight MLOps Zoomcamp for details)
 
 Install depencencies 
 
 ```bash
 cd train
-
-pip install -U pipenv 
-pipenv instal 
-pipenv shell
+pipenv install
 ```
 
 Start jupyter
 
 ```bash
-jupyter notebook
+pipenv run jupyter notebook
 ``` 
 
-And execute the code to get the model
+If you have Anaconda, you can skip installing the packages and run the 
+notebook:
 
-Deactivate the env (ctr+C)
+```bash
+jupyter notebook
+```
+
+Next, execute the code to get the model
+
 
 ## Serving the model
 
-* Implement a simple Flask application for serving the model
+Implement a simple Flask application for serving the model
 
 
 Install depencencies 
@@ -65,23 +71,25 @@ Install depencencies
 ```bash
 cd serve
  
-pipenv instal 
-pipenv shell
+pipenv install
 ```
 
 Run the `serve_starter.py` file:
 
 ```bash
-python serve_starter.py
+pipenv run python serve_starter.py
 ```
 
 Send a request:
 
 ```bash
 REQUEST='{
-    "PULocationID": 100,
-    "DOLocationID": 102,
-    "trip_distance": 30
+    "ride_id": "XYZ10",
+    "ride": {
+        "PULocationID": 100,
+        "DOLocationID": 102,
+        "trip_distance": 30
+    }
 }'
 URL="http://localhost:9696/predict"
 
@@ -103,16 +111,89 @@ Response:
 
 ## Logging the predictions
 
-* Log the predictions to a Kinesis stream and save them in a data lake (s3)
+Log the predictions to a Kinesis stream and save them in a data lake (s3)
 
 Now let's modify our `serve_starter.py` to add logging. We will log the
 prediction to a kinesis stream, but you can use any other way of 
 logging.
 
+Create a kinesis stream, e.g. `duration_prediction_serve_logger`. 
+
+Add logging:
+
+```python
+import json
+
+PREDICTIONS_STREAM_NAME = 'duration_prediction_serve_logger'
+kinesis_client = boto3.client('kinesis')
+
+# in the serve function
+
+prediction_event = {
+    'ride_id': ride_id,
+    'ride': ride,
+    'features': features,
+    'prediction': result 
+}
+
+print(f'logging {prediction_event} to {PREDICTIONS_STREAM_NAME}...')
+
+kinesis_client.put_record(
+    StreamName=PREDICTIONS_STREAM_NAME,
+    Data=json.dumps(prediction_event) + "\n",
+    PartitionKey=str(ride_id)
+)
+```
+
+Send a request:
+
+```bash
+REQUEST='{
+    "ride_id": "XYZ10",
+    "ride": {
+        "PULocationID": 100,
+        "DOLocationID": 102,
+        "trip_distance": 30
+    }
+}'
+URL="http://localhost:9696/predict"
+
+curl -X POST \
+    -d "${REQUEST}" \
+    -H "Content-Type: application/json" \
+    ${URL}
+```
+
+We can check the logs
+
+```bash
+KINESIS_STREAM_OUTPUT='duration_prediction_serve_logger'
+SHARD='shardId-000000000000'
+
+SHARD_ITERATOR=$(aws kinesis \
+    get-shard-iterator \
+        --shard-id ${SHARD} \
+        --shard-iterator-type TRIM_HORIZON \
+        --stream-name ${KINESIS_STREAM_OUTPUT} \
+        --query 'ShardIterator' \
+)
+
+RESULT=$(aws kinesis get-records --shard-iterator $SHARD_ITERATOR)
+
+echo ${RESULT} | jq -r '.Records[0].Data' | base64 --decode
+```
+
 
 ## Getting data from S3
 
-* Set up a batch job for pulling the data from S3 and analyzing it 
+Set up a batch job for pulling the data from S3 and analyzing it 
+
+* Create an s3 bucket "duration-prediction-serve-logs"
+* Enable firehose
+* No data transformation (explore yourself)
+* No data converstion (explore yourself)
+* Destination: "s3://duration-prediction-serve-logs"
+
 
 ## Data drift report
 

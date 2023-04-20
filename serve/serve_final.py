@@ -1,6 +1,11 @@
+import json
 import pickle
+import boto3 
+
 from flask import Flask, request, jsonify
 
+
+PREDICTIONS_STREAM_NAME = 'duration_prediction_serve_logger'
 
 with open('lin_reg.bin', 'rb') as f_in:
     model = pickle.load(f_in)
@@ -21,6 +26,8 @@ def predict(features):
 
 app = Flask('duration-prediction')
 
+kinesis_client = boto3.client('kinesis')
+
 
 @app.route('/predict', methods=['POST'])
 def predict_endpoint():
@@ -36,6 +43,21 @@ def predict_endpoint():
             'duration': pred,
         }
     }
+
+    prediction_event = {
+        'ride_id': ride_id,
+        'ride': ride,
+        'features': features,
+        'prediction': result 
+    }
+
+    print(f'logging {prediction_event} to {PREDICTIONS_STREAM_NAME}...')
+
+    kinesis_client.put_record(
+        StreamName=PREDICTIONS_STREAM_NAME,
+        Data=json.dumps(prediction_event) + "\n",
+        PartitionKey=str(ride_id)
+    )
 
     return jsonify(result)
 
