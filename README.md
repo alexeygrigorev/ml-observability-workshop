@@ -33,11 +33,14 @@ Creating an end-to-end observability platform
 ```bash
 (cd train && pipenv install)
 (cd serve && pipenv install)
+(cd monitor && pipenv install)
 ```
 
 ## MLOps
 
 Introduction to MLOps and how it helps with the entire ML project lifecycle
+
+* Article: https://datatalks.club/blog/mlops-10-minutes.html
 
 ## Use case
 
@@ -100,7 +103,7 @@ Response:
 
 ```json
 {
-  "preduction": {
+  "prediction": {
     "duration": 20.77956787473484
   }
 }
@@ -141,6 +144,8 @@ kinesis_client.put_record(
     PartitionKey=str(ride_id)
 )
 ```
+
+(Note `+ "\n"` - it's important)
 
 Send a request:
 
@@ -190,6 +195,7 @@ Set up a batch job for pulling the data from S3 and analyzing it
 * No data transformation (explore yourself)
 * No data converstion (explore yourself)
 * Destination: "s3://duration-prediction-serve-logs"
+* Look at the files in the bucket
 
 
 ## Data drift report

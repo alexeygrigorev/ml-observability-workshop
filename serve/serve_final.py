@@ -39,7 +39,7 @@ def predict_endpoint():
     pred = predict(features)
 
     result = {
-        'preduction': {
+        'prediction': {
             'duration': pred,
         }
     }
