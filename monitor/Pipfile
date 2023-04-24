@@ -10,6 +10,7 @@ pyarrow = "*"
 evidently = "*"
 scikit-learn = "==1.2.2"
 python-dateutil = "*"
+prefect = "==2.10.4"
 
 [dev-packages]
 

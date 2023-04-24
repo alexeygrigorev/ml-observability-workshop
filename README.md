@@ -11,6 +11,7 @@ Creating an end-to-end observability platform
 * Log the predictions to a Kinesis stream and save them in a data lake (s3)
 * Set up a batch job for pulling the data from S3 and analyzing it 
 * Analyze the data with Evidently, generate a simple visual report (Data Drift / Data Quality)
+* Create a Prefect pipeline
 * Automate data checks as part of the prediction pipeline. Design a custom test suite for data quality, data drift and prediction drift
 * Model quality checks. Generate the report on model performance once you receive the ground truth
 * Setting up slack/email alerts 
@@ -198,13 +199,149 @@ Set up a batch job for pulling the data from S3 and analyzing it
 * Look at the files in the bucket
 
 
+We can't wait for long, so we simulated the traffic and put the 
+data in the monitor/data folder. To generate it, run 
+the `prepare-files.ipynb` notebook.
+
+
 ## Data drift report
 
 * Analyze the data with Evidently, generate a simple visual report (Data Drift / Data Quality).
 
+Our virtual enviorment already has evidently installed. But if you're
+using your own environment, run 
+
+```bash
+pip install evidently
+```
+
+Let's use it to generate a simple visual report
+
+
+First, load the reference data (data we used for training)
+
+```python
+df_reference = pd.read_parquet('data/2022/01/2022-01-full.parquet')
+```
+
+Evidently is quite slow when analyzing large datasets, so we should
+take a sample:
+
+
+```python
+df_reference = pd.read_parquet('data/2022/01/2022-01-full.parquet')
+```
+
+Next, we load the "production" data. First, we load the trips:
+
+```python
+year = 2023
+month = 1
+day = 2
+
+trips_file = f'data/{year:04d}/{month:02d}/{year:04d}-{month:02d}-{day:02d}.parquet'
+df_trips = pd.read_parquet(trips_file)
+```
+
+Second, load the logs:
+
+```python
+logs_file = f'data/{year:04d}/{month:02d}/{year:04d}-{month:02d}-{day:02d}-predictions.jsonl'
+
+df_logs = pd.read_json(logs_file, lines=True)
+
+df_predictions = pd.DataFrame()
+df_predictions['ride_id'] = df_logs['ride_id']
+df_predictions['prediction'] = df_logs['prediction'].apply(lambda p: p['prediction']['duration'])
+```
+
+And merge them: 
+
+```python
+df = df_trips.merge(df_predictions, on='ride_id')
+```
+
+Now let's see if there's any drift. Import evidently:
+
+```python
+from evidently.report import Report
+from evidently.metric_preset import DataDriftPreset
+```
+
+Build a simple drift report:
+
+```python
+report = Report(metrics=[
+    DataDriftPreset(columns=['PULocationID', 'DOLocationID', 'trip_distance']), 
+])
+
+report.run(reference_data=df_reference_sample, current_data=df_trips)
+
+report.show(mode='inline')
+```
+
+In this preset report, it uses Jensen-Shannon distance to measure
+the descrepancies between reference and production. While it says
+that drift is detected, we should be careful about it and 
+check other months.
+
+We can tune it:
+
+```python
+report = Report(metrics=[
+    DataDriftPreset(
+        columns=['PULocationID', 'DOLocationID', 'trip_distance'],
+        cat_stattest='psi',
+        cat_stattest_threshold=0.2
+        num_stattest='ks',
+        num_stattest_threshold=0.2,
+    ), 
+])
+
+report.run(reference_data=df_reference_sample, current_data=df_trips)
+report.show(mode='inline')
+```
+
+Save the report as HTML:
+
+```python
+report.save_html(f'reports/report-{year:04d}-{month:02d}-{day:02d}.html')
+``` 
+
+You can generate these reports in your automatic pipelines and then
+send them e.g. over email.
+
+Let's create this pipeline.
+
+
+## Creating a pipeline with Prefect
+
+Now we'll use Prefect to orchestrate the report generation.
+
+We will take the code we created and put it into a Python script. 
+See `pipeline_sample.py` for details. 
+
+Run prefect server:
+
+```bash
+pipenv run prefect config set PREFECT_UI_API_URL=http://127.0.0.1:4200/api
+pipenv run prefect server start
+```
+
+Run the pipeline:
+
+```bash
+pipenv run prefect config set PREFECT_API_URL=http://127.0.0.1:4200/api
+pipenv run python pipeline_sample.py
+```
+
+
 ## Data checks
 
 * Automate data checks as part of the prediction pipeline. Design a custom test suite for data quality, data drift and prediction drift.
+
+Now we want to automate our checks and have them as a part of our 
+prediction pipeline. 
 
 ## Model quality checks
 
