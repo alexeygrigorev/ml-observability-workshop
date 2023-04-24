@@ -3,7 +3,16 @@ from datetime import datetime
 import pandas as pd
 
 from evidently.report import Report
+from evidently.test_suite import TestSuite
+
 from evidently.metric_preset import DataDriftPreset
+from evidently.tests import TestNumberOfRows
+from evidently.tests import TestNumberOfColumns
+from evidently.tests import TestColumnsType
+from evidently.tests import TestAllColumnsShareOfMissingValues
+from evidently.tests import TestNumColumnsOutOfRangeValues
+from evidently.tests import TestCatColumnsOutOfListValues
+from evidently.tests import TestNumColumnsMeanInNSigmas
 
 from prefect import flow, task
 
@@ -52,6 +61,54 @@ def create_drift_report(df_reference: pd.DataFrame, df_target: pd.DataFrame) -> 
     return report
 
 
+@task
+def send_alert_if_drift_detected(report: Report):
+    report_metrics = report.as_dict()['metrics']
+
+    report_metrics = {d['metric']: d['result'] for d in report_metrics}
+    drift_report = report_metrics['DataDriftTable']
+
+    if drift_report['dataset_drift']:
+        # send alert
+        print('drift detected!')
+
+
+@task
+def run_tests(df_reference: pd.DataFrame, df_target: pd.DataFrame) -> TestSuite:
+    data_stability_suite = TestSuite(tests=[
+        TestNumberOfRows(gte=1000, lte=20000),
+        TestNumberOfColumns(),
+        TestColumnsType(),
+        TestAllColumnsShareOfMissingValues(),
+        TestNumColumnsOutOfRangeValues(),
+        TestCatColumnsOutOfListValues(
+            columns=['PULocationID', 'DOLocationID', 'trip_distance']
+        ),
+        TestNumColumnsMeanInNSigmas(),
+    ])
+
+    data_stability_suite.run(reference_data=df_reference, current_data=df_target)
+    data_stability_suite.show(mode='inline')
+
+    return data_stability_suite
+
+
+@task
+def send_alert_if_tests_fail(test_suite: TestSuite): 
+    test_results = test_suite.as_dict()['tests']
+
+    failed_tests = []
+
+    for test in test_results:
+        status = test['status']
+        if status == 'FAIL':
+            failed_tests.append(test)
+
+    if len(failed_tests) > 0:
+        print('tests failed:')
+        print(failed_tests)
+
+
 @flow
 def generate_drift_report(year: int, month: int, day: int):
     df_reference = pd.read_parquet(REFERENCE_DATA)
@@ -62,6 +119,11 @@ def generate_drift_report(year: int, month: int, day: int):
     report_name = f'reports/report-{year:04d}-{month:02d}-{day:02d}.html'
     report = create_drift_report(df_reference_sample, df_target)
     report.save_html(report_name)
+
+    send_alert_if_drift_detected(report)
+
+    test_suite = run_tests(df_reference_sample, df_target)
+    send_alert_if_tests_fail(test_suite)
 
 
 @flow
