@@ -308,6 +308,23 @@ Save the report as HTML:
 report.save_html(f'reports/report-{year:04d}-{month:02d}-{day:02d}.html')
 ``` 
 
+
+We can also extract information from this report and use it 
+for e.g. sending an alert:
+
+```python
+report_metrics = report.as_dict()['metrics']
+report_metrics = {d['metric']: d['result'] for d in report_metrics}
+drift_report = report_metrics['DataDriftTable']
+
+if drift_report['dataset_drift']:
+    # send alert
+    print('drift detected!')
+```
+
+We won't implement the logic for sending alerts here, but you can
+find a lot of examples online. Or use ChatGPT to help you.
+
 You can generate these reports in your automatic pipelines and then
 send them e.g. over email.
 
@@ -340,8 +357,76 @@ pipenv run python pipeline_sample.py
 
 * Automate data checks as part of the prediction pipeline. Design a custom test suite for data quality, data drift and prediction drift.
 
-Now we want to automate our checks and have them as a part of our 
-prediction pipeline. 
+Now we want to add data quality checks. We will start with simple
+integrity checks: data types, missing values and so on.
+
+They are also done via reports:
+
+
+```python
+from evidently.metrics import DatasetSummaryMetric, DatasetMissingValuesMetric
+
+data_integrity_report = Report(metrics=[
+    DatasetSummaryMetric(),
+    DatasetMissingValuesMetric()
+])
+
+data_integrity_report.run(reference_data=df_reference_sample, current_data=df_trips)
+data_integrity_report.show(mode='inline')
+```
+
+In addition to reports, we can add tests. You can think of these 
+tests as unit/integration tests for software. They pass or fail, 
+and if they fail, we get an alert - something is wrong with the data,
+so we need to look at it.
+
+```python
+from evidently.test_suite import TestSuite
+from evidently.test_preset import DataStabilityTestPreset
+
+data_stability = TestSuite(tests=[
+    DataStabilityTestPreset(),
+])
+
+data_stability.run(reference_data=df_reference_sample, current_data=df_trips)
+data_stability.show(mode='inline')
+```
+
+Let's tune the test:
+
+```python
+data_stability = TestSuite(tests=[
+    TestNumberOfRows(gte=1000, lte=20000),
+    TestNumberOfColumns(),
+    TestColumnsType(),
+    TestAllColumnsShareOfMissingValues(),
+    TestNumColumnsOutOfRangeValues(),
+    TestCatColumnsOutOfListValues(
+        columns=['PULocationID', 'DOLocationID', 'trip_distance']
+    ),
+    TestNumColumnsMeanInNSigmas(),
+])
+
+data_stability.run(reference_data=df_reference_sample, current_data=df_trips)
+data_stability.show(mode='inline')
+```
+
+We can add this to our pipeline too:
+
+```python
+test_results = data_stability.as_dict()['tests']
+
+failed_tests = []
+
+for test in test_results:
+    status = test['status']
+    if status == 'FAIL':
+        failed_tests.append(test)
+
+if len(failed_tests) > 0:
+    print('tests failed:')
+    print(failed_tests)
+```
 
 ## Model quality checks
 
@@ -357,4 +442,12 @@ prediction pipeline.
 * Wrapping up: summarizing key takeaways and reviewing recommended practices
 
 
+
+
+## More information
+
+* [MLOps Zoomcamp](https://github.com/DataTalksClub/mlops-zoomcamp)
+* [Configuring Prefect (Module 3 of MLOps Zoomcamp)](https://github.com/DataTalksClub/mlops-zoomcamp/tree/main/03-orchestration)
+* [Monitoring (Module 5 of MLOps Zoomcamp)](https://github.com/DataTalksClub/mlops-zoomcamp/tree/main/05-monitoring)
+* [More Evidently examples](https://docs.evidentlyai.com/examples)
 
