@@ -428,9 +428,42 @@ if len(failed_tests) > 0:
     print(failed_tests)
 ```
 
+Examples:
+
+* https://github.com/evidentlyai/evidently/blob/main/examples/sample_notebooks/evidently_tests.ipynb
+
 ## Model quality checks
 
-* Model quality checks. Generate the report on model performance once you receive the ground truth.
+We also have labels that come with delay - every time the ride 
+ended, we can compare the predictions with the actual duration
+and make some conclusions. If our model performance drifts, 
+we can notice it and react (e.g. by retraining the model)
+
+
+First, we need to prepare the data a bit:
+
+```python
+df_reference_sample = df_reference_sample.rename(columns={'duration': 'target'})
+df = df.rename(columns={'duration': 'target'})
+```
+
+Now let's run the report:
+
+```python
+regression_performance_report = Report(metrics=[
+    RegressionPreset(columns=['PULocationID', 'DOLocationID', 'trip_distance']),
+])
+
+regression_performance_report.run(reference_data=df_reference_sample, current_data=df)
+regression_performance_report.show(mode='inline')
+```
+
+Note: for classification you can use this report:
+
+```python
+from evidently.metric_preset import ClassificationPreset
+```
+
 
 ## Alerting
 
